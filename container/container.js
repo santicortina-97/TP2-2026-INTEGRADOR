@@ -8,23 +8,31 @@ import { makeCrudRouter } from '../routes/crud.routes.js';
 import { createDuenioSchema, updateDuenioSchema, listDueniosQuerySchema } from '../schemas/duenio.schema.js';
 import { createMascotaSchema, updateMascotaSchema, listMascotasQuerySchema } from '../schemas/mascota.schema.js';
 import { createTurnoSchema, updateTurnoSchema, listTurnosQuerySchema } from '../schemas/turno.schema.js';
+import { createEventBus } from '../events/eventBus.js';
+import { registerTurnoListeners } from '../events/turno.listeners.js';
+import { ConsoleNotifier } from '../notifications/ConsoleNotifier.js';
+import { makeDocsRouter } from '../docs/swagger.js';
 
 // Composition Root: el único lugar que conoce las implementaciones concretas
 export const createContainer = async (config) => {
   // 1. DAOs según la persistencia elegida
   const { duenioDao, mascotaDao, turnoDao } = await createDaos(config);
 
-  // 2. Casos de uso: reciben los DAOs por parámetro
+  // 2. Bus de eventos y listeners con su notificador
+  const eventBus = createEventBus();
+  registerTurnoListeners({ eventBus, notifier: new ConsoleNotifier() });
+
+  // 3. Casos de uso: reciben los DAOs (y el bus) por parámetro
   const duenioUseCases = makeDuenioUseCases({ duenioDao, mascotaDao });
   const mascotaUseCases = makeMascotaUseCases({ mascotaDao, duenioDao, turnoDao });
-  const turnoUseCases = makeTurnoUseCases({ turnoDao, mascotaDao });
+  const turnoUseCases = makeTurnoUseCases({ turnoDao, mascotaDao, eventBus });
 
-  // 3. Controladores: reciben los casos de uso
+  // 4. Controladores: reciben los casos de uso
   const duenioController = makeCrudController(duenioUseCases);
   const mascotaController = makeCrudController(mascotaUseCases);
   const turnoController = makeCrudController(turnoUseCases);
 
-  // 4. Routers montados con su prefijo
+  // 5. Routers montados con su prefijo
   const router = Router();
   router.use('/api/duenios', makeCrudRouter(duenioController, {
     listQuery: listDueniosQuerySchema, create: createDuenioSchema, update: updateDuenioSchema
@@ -35,6 +43,7 @@ export const createContainer = async (config) => {
   router.use('/api/turnos', makeCrudRouter(turnoController, {
     listQuery: listTurnosQuerySchema, create: createTurnoSchema, update: updateTurnoSchema
   }));
+  router.use(makeDocsRouter());
 
   return { router };
 };

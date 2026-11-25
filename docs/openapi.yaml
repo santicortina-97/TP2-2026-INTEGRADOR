@@ -1,0 +1,550 @@
+openapi: 3.0.3
+info:
+  title: API Veterinaria
+  version: 1.0.0
+  description: |
+    API REST para gestionar los dueños, sus mascotas y los turnos de una veterinaria.
+
+    - Un **dueño** tiene muchas **mascotas** y una **mascota** tiene muchos **turnos** (relaciones 1 a N).
+    - Regla de negocio: no puede haber dos turnos activos (no cancelados) en la misma fecha y hora.
+    - Todas las fechas y horas se devuelven en UTC (ISO 8601).
+servers:
+  - url: /
+    description: Servidor actual
+tags:
+  - name: Dueños
+  - name: Mascotas
+  - name: Turnos
+
+paths:
+  /api/duenios:
+    get:
+      tags: [Dueños]
+      summary: Listar dueños
+      description: Devuelve los dueños paginados. Permite filtrar por nombre (búsqueda parcial) y ordenar.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: sort
+          in: query
+          description: Campo por el que se ordena
+          schema: { type: string, enum: [id, nombre, email, createdAt], default: id }
+        - name: nombre
+          in: query
+          description: Filtra por nombre (contiene, sin distinguir mayúsculas)
+          schema: { type: string }
+          example: ana
+      responses:
+        '200':
+          description: Página de dueños
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DuenioPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Dueños]
+      summary: Crear un dueño
+      description: El email no se puede repetir (se compara en minúsculas).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DuenioInput' }
+            example: { nombre: Ana Pérez, email: ana@mail.com, telefono: '1155554444' }
+      responses:
+        '201':
+          description: Dueño creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Duenio' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: Ya existe un dueño con ese email
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: EMAIL_DUPLICADO, message: Ya existe un dueño con el email ana@mail.com, details: null }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/duenios/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Dueños]
+      summary: Obtener un dueño por id
+      responses:
+        '200':
+          description: Dueño encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Duenio' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Dueños]
+      summary: Actualizar un dueño
+      description: Se envían solo los campos a modificar (al menos uno).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DuenioUpdate' }
+            example: { telefono: '1166667777' }
+      responses:
+        '200':
+          description: Dueño actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Duenio' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: El nuevo email ya pertenece a otro dueño
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: EMAIL_DUPLICADO, message: Ya existe un dueño con el email ana@mail.com, details: null }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Dueños]
+      summary: Eliminar un dueño
+      description: No se puede eliminar un dueño que tiene mascotas.
+      responses:
+        '204': { description: Dueño eliminado }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: El dueño tiene mascotas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: DUENIO_CON_MASCOTAS, message: No se puede eliminar un dueño que tiene mascotas, details: null }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/mascotas:
+    get:
+      tags: [Mascotas]
+      summary: Listar mascotas
+      description: Devuelve las mascotas paginadas. Permite filtrar por nombre, especie y dueño.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: sort
+          in: query
+          description: Campo por el que se ordena
+          schema: { type: string, enum: [id, nombre, especie, createdAt], default: id }
+        - name: nombre
+          in: query
+          description: Filtra por nombre (contiene, sin distinguir mayúsculas)
+          schema: { type: string }
+        - name: especie
+          in: query
+          schema: { $ref: '#/components/schemas/Especie' }
+        - name: duenioId
+          in: query
+          description: Solo las mascotas de este dueño
+          schema: { type: integer, minimum: 1 }
+          example: 1
+      responses:
+        '200':
+          description: Página de mascotas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MascotaPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Mascotas]
+      summary: Crear una mascota
+      description: El dueño indicado en `duenioId` tiene que existir.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MascotaInput' }
+            example: { nombre: Firulais, especie: perro, raza: Mestizo, fechaNacimiento: '2022-03-01', duenioId: 1 }
+      responses:
+        '201':
+          description: Mascota creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mascota' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/mascotas/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Mascotas]
+      summary: Obtener una mascota por id
+      responses:
+        '200':
+          description: Mascota encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mascota' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Mascotas]
+      summary: Actualizar una mascota
+      description: Se envían solo los campos a modificar (al menos uno). Si se cambia `duenioId`, el dueño tiene que existir.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MascotaUpdate' }
+            example: { raza: Labrador }
+      responses:
+        '200':
+          description: Mascota actualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mascota' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Mascotas]
+      summary: Eliminar una mascota
+      description: No se puede eliminar una mascota que tiene turnos.
+      responses:
+        '204': { description: Mascota eliminada }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: La mascota tiene turnos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: MASCOTA_CON_TURNOS, message: No se puede eliminar una mascota que tiene turnos, details: null }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/turnos:
+    get:
+      tags: [Turnos]
+      summary: Listar turnos
+      description: Devuelve los turnos paginados. Permite filtrar por mascota, estado y rango de fechas.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: sort
+          in: query
+          description: Campo por el que se ordena
+          schema: { type: string, enum: [id, fechaHora, createdAt], default: fechaHora }
+        - name: mascotaId
+          in: query
+          description: Solo los turnos de esta mascota
+          schema: { type: integer, minimum: 1 }
+        - name: estado
+          in: query
+          schema: { $ref: '#/components/schemas/EstadoTurno' }
+        - name: desde
+          in: query
+          description: Turnos desde esta fecha y hora (inclusive)
+          schema: { type: string, format: date-time }
+          example: '2026-12-01T00:00:00-03:00'
+        - name: hasta
+          in: query
+          description: Turnos hasta esta fecha y hora (inclusive)
+          schema: { type: string, format: date-time }
+          example: '2026-12-31T23:59:59-03:00'
+      responses:
+        '200':
+          description: Página de turnos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TurnoPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Turnos]
+      summary: Reservar un turno
+      description: |
+        La mascota tiene que existir y el horario tiene que estar libre (sin otro turno no cancelado en la misma fecha y hora).
+        El turno se crea en estado `pendiente` y emite el evento `turno.creado`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TurnoInput' }
+            example: { mascotaId: 1, fechaHora: '2026-12-01T10:00:00-03:00', motivo: Vacunación }
+      responses:
+        '201':
+          description: Turno reservado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Turno' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TurnoOcupado' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/turnos/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Turnos]
+      summary: Obtener un turno por id
+      responses:
+        '200':
+          description: Turno encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Turno' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Turnos]
+      summary: Actualizar o cancelar un turno
+      description: |
+        Se envían solo los campos a modificar (al menos uno).
+        Si cambia el horario, o se reactiva un turno cancelado, se vuelve a verificar que el horario esté libre.
+        Al pasar a `cancelado` se emite el evento `turno.cancelado`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TurnoUpdate' }
+            examples:
+              cancelar:
+                summary: Cancelar el turno
+                value: { estado: cancelado }
+              reprogramar:
+                summary: Cambiar el horario
+                value: { fechaHora: '2026-12-02T15:30:00-03:00' }
+      responses:
+        '200':
+          description: Turno actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Turno' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TurnoOcupado' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Turnos]
+      summary: Eliminar un turno
+      responses:
+        '204': { description: Turno eliminado }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      description: Identificador numérico
+      schema: { type: integer, minimum: 1 }
+      example: 1
+    Page:
+      name: page
+      in: query
+      description: Número de página
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      description: Cantidad de resultados por página
+      schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+    Order:
+      name: order
+      in: query
+      description: Sentido del ordenamiento
+      schema: { type: string, enum: [asc, desc], default: asc }
+
+  responses:
+    BadRequest:
+      description: Datos de entrada inválidos (body, params o query)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Datos de entrada inválidos
+              details:
+                - { in: body, path: email, message: Inválido dirección de correo electrónico }
+    NotFound:
+      description: El recurso (o uno relacionado) no existe
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: MASCOTA_NOT_FOUND, message: No existe la mascota 99, details: null }
+    TurnoOcupado:
+      description: Ya hay un turno activo en ese horario
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: TURNO_OCUPADO, message: El horario 2026-12-01T13:00:00.000Z ya está ocupado, details: null }
+    InternalError:
+      description: Error inesperado del servidor
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: INTERNAL_ERROR, message: Error interno del servidor, details: null }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: TURNO_OCUPADO }
+            message: { type: string }
+            details:
+              type: array
+              nullable: true
+              items:
+                type: object
+                properties:
+                  in: { type: string, enum: [body, params, query] }
+                  path: { type: string }
+                  message: { type: string }
+
+    Meta:
+      type: object
+      properties:
+        page: { type: integer, example: 1 }
+        limit: { type: integer, example: 10 }
+        total: { type: integer, example: 1 }
+        totalPages: { type: integer, example: 1 }
+
+    Timestamps:
+      type: object
+      properties:
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Especie:
+      type: string
+      enum: [perro, gato, ave, conejo, otro]
+
+    EstadoTurno:
+      type: string
+      enum: [pendiente, realizado, cancelado]
+
+    DuenioInput:
+      type: object
+      required: [nombre, email]
+      properties:
+        nombre: { type: string, minLength: 2, maxLength: 100, example: Ana Pérez }
+        email: { type: string, format: email, example: ana@mail.com }
+        telefono: { type: string, minLength: 6, maxLength: 20, example: '1155554444' }
+    DuenioUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        nombre: { type: string, minLength: 2, maxLength: 100 }
+        email: { type: string, format: email }
+        telefono: { type: string, minLength: 6, maxLength: 20 }
+    Duenio:
+      allOf:
+        - type: object
+          properties:
+            id: { type: integer, example: 1 }
+        - $ref: '#/components/schemas/DuenioInput'
+        - $ref: '#/components/schemas/Timestamps'
+    DuenioPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Duenio' }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    MascotaInput:
+      type: object
+      required: [nombre, especie, duenioId]
+      properties:
+        nombre: { type: string, minLength: 1, maxLength: 100, example: Firulais }
+        especie: { $ref: '#/components/schemas/Especie' }
+        raza: { type: string, maxLength: 100, example: Mestizo }
+        fechaNacimiento: { type: string, format: date, example: '2022-03-01' }
+        duenioId: { type: integer, minimum: 1, example: 1 }
+    MascotaUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        nombre: { type: string, minLength: 1, maxLength: 100 }
+        especie: { $ref: '#/components/schemas/Especie' }
+        raza: { type: string, maxLength: 100 }
+        fechaNacimiento: { type: string, format: date }
+        duenioId: { type: integer, minimum: 1 }
+    Mascota:
+      allOf:
+        - type: object
+          properties:
+            id: { type: integer, example: 1 }
+        - $ref: '#/components/schemas/MascotaInput'
+        - $ref: '#/components/schemas/Timestamps'
+    MascotaPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Mascota' }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    TurnoInput:
+      type: object
+      required: [mascotaId, fechaHora, motivo]
+      properties:
+        mascotaId: { type: integer, minimum: 1, example: 1 }
+        fechaHora:
+          type: string
+          format: date-time
+          description: Fecha y hora con zona horaria. Se guarda en UTC.
+          example: '2026-12-01T10:00:00-03:00'
+        motivo: { type: string, minLength: 3, maxLength: 255, example: Vacunación }
+    TurnoUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        mascotaId: { type: integer, minimum: 1 }
+        fechaHora: { type: string, format: date-time }
+        motivo: { type: string, minLength: 3, maxLength: 255 }
+        estado: { $ref: '#/components/schemas/EstadoTurno' }
+    Turno:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        mascotaId: { type: integer, example: 1 }
+        fechaHora: { type: string, format: date-time, example: '2026-12-01T13:00:00.000Z' }
+        motivo: { type: string, example: Vacunación }
+        estado: { $ref: '#/components/schemas/EstadoTurno' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    TurnoPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Turno' }
+        meta: { $ref: '#/components/schemas/Meta' }

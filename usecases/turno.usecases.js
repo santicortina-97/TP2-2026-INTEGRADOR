@@ -1,7 +1,8 @@
 import { AppError } from '../errors/AppError.js';
 import { toListOptions, toPage } from './pagination.js';
+import { EVENTOS } from '../events/eventBus.js';
 
-export const makeTurnoUseCases = ({ turnoDao, mascotaDao }) => {
+export const makeTurnoUseCases = ({ turnoDao, mascotaDao, eventBus }) => {
   const getOrFail = async (id) => {
     const turno = await turnoDao.findById(id);
     if (!turno) throw AppError.notFound('TURNO_NOT_FOUND', `No existe el turno ${id}`);
@@ -33,7 +34,9 @@ export const makeTurnoUseCases = ({ turnoDao, mascotaDao }) => {
     create: async (data) => {
       await assertMascotaExiste(data.mascotaId);
       await assertHorarioLibre(data.fechaHora);
-      return turnoDao.create({ ...data, estado: 'pendiente' });
+      const turno = await turnoDao.create({ ...data, estado: 'pendiente' });
+      eventBus.emit(EVENTOS.TURNO_CREADO, turno);
+      return turno;
     },
 
     update: async (id, data) => {
@@ -49,7 +52,11 @@ export const makeTurnoUseCases = ({ turnoDao, mascotaDao }) => {
         await assertHorarioLibre(fechaHora, id);
       }
 
-      return turnoDao.update(id, data);
+      const turno = await turnoDao.update(id, data);
+      if (actual.estado !== 'cancelado' && turno.estado === 'cancelado') {
+        eventBus.emit(EVENTOS.TURNO_CANCELADO, turno);
+      }
+      return turno;
     },
 
     remove: async (id) => {
