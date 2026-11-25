@@ -1,0 +1,17 @@
+import express from 'express';
+import { config } from './config/config.js';
+import { createContainer } from './container/container.js';
+import { notFound } from './middlewares/notFound.js';
+import { errorHandler } from './middlewares/errorHandler.js';
+
+const { router } = await createContainer(config);
+
+const app = express();
+app.use(express.json());
+app.use(router);
+app.use(notFound);
+app.use(errorHandler);
+
+app.listen(config.port, () => {
+  console.log(`Servidor en http://localhost:${config.port} (persistencia: ${config.persistenceType})`);
+});

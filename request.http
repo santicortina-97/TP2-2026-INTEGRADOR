@@ -1,0 +1,71 @@
+@base = http://localhost:3000/api
+
+### Crear dueño
+POST {{base}}/duenios
+Content-Type: application/json
+
+{ "nombre": "Ana Pérez", "email": "ana@mail.com", "telefono": "1155554444" }
+
+
+### Email duplicado (409)
+POST {{base}}/duenios
+Content-Type: application/json
+
+{ "nombre": "Otra Ana", "email": "ANA@mail.com" }
+
+### Validación inválida (400)
+POST {{base}}/duenios
+Content-Type: application/json
+
+{ "nombre": "B", "email": "no-es-mail", "extra": 1 }
+
+### Crear mascota
+POST {{base}}/mascotas
+Content-Type: application/json
+
+{ "nombre": "Firulais", "especie": "perro", "duenioId": 1 }
+
+### Mascota con dueño inexistente (404)
+POST {{base}}/mascotas
+Content-Type: application/json
+
+{ "nombre": "Michi", "especie": "gato", "duenioId": 99 }
+
+### Crear turno
+POST {{base}}/turnos
+Content-Type: application/json
+
+{ "mascotaId": 1, "fechaHora": "2026-12-01T10:00:00-03:00", "motivo": "Vacunación" }
+
+### Turno ocupado (409) - mismo horario escrito en UTC
+POST {{base}}/turnos
+Content-Type: application/json
+
+{ "mascotaId": 1, "fechaHora": "2026-12-01T13:00:00Z", "motivo": "Control" }
+
+### Cancelar turno
+PATCH {{base}}/turnos/2
+Content-Type: application/json
+
+{ "estado": "cancelado" }
+
+### Listar turnos con filtros y paginación
+GET {{base}}/turnos?estado=cancelado&page=1&limit=5
+
+### Listar dueños ordenados
+GET {{base}}/duenios?sort=nombre&order=desc
+
+### Obtener por id inexistente (404)
+GET {{base}}/duenios/50
+
+### Id inválido (400)
+GET {{base}}/duenios/abc
+
+### Eliminar dueño con mascotas (409)
+DELETE {{base}}/duenios/1
+
+### Eliminar turno (204)
+DELETE {{base}}/turnos/1
+
+### Ruta inexistente (404)
+GET {{base}}/gatitos
