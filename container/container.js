@@ -12,7 +12,7 @@ import { createTurnoSchema, updateTurnoSchema, listTurnosQuerySchema } from '../
 // Composition Root: el único lugar que conoce las implementaciones concretas
 export const createContainer = async (config) => {
   // 1. DAOs según la persistencia elegida
-  const { duenioDao, mascotaDao, turnoDao } = await createDaos(config.persistenceType);
+  const { duenioDao, mascotaDao, turnoDao } = await createDaos(config);
 
   // 2. Casos de uso: reciben los DAOs por parámetro
   const duenioUseCases = makeDuenioUseCases({ duenioDao, mascotaDao });
